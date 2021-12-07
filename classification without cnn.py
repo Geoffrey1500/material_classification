@@ -14,6 +14,9 @@ from sktime.utils.slope_and_trend import _slope
 from sklearn.metrics import confusion_matrix
 from sklearn.metrics import plot_confusion_matrix
 import os
+from sklearn.model_selection import KFold
+from sklearn.model_selection import cross_val_score
+import seaborn as sns
 
 
 def gaussian(dist, mu=0, sigma=1.0):
@@ -23,11 +26,6 @@ def gaussian(dist, mu=0, sigma=1.0):
 def data_prepare(path_to_data, appro_period=100, filter_len=2, sampling_rate=10):
     data_ = pd.read_excel(path_to_data).to_numpy()
     print("一共有 " + str(np.shape(data_)[-1]) + "样本")
-
-    # # 数据进行归一化处理 （暂时存在一定问题，先别用）
-    # data_only = data_[1::, :]
-    # scaler = MinMaxScaler()
-    # data_ = np.vstack((data_[0, :], scaler.fit_transform(data_only)))
 
     # 数据降采样
     data_ = data_[::int(10 / sampling_rate), :]
@@ -78,7 +76,23 @@ def data_prepare(path_to_data, appro_period=100, filter_len=2, sampling_rate=10)
     return data_head_all[1::, :]
 
 
+def storeTree(inputTree, filename):
+    # 序列化决策树,存入文件
+    import pickle
+    fw = open(filename, 'wb')
+    pickle.dump(inputTree, fw)
+    fw.close()
+
+
+def grabTree(filename):
+    # 将文件转换为决策树到内存
+    import pickle
+    fr = open(filename, 'rb')
+    return pickle.load(fr)
+
+
 if __name__ == "__main__":
+    # 数据预处理
     if os.path.exists("processed_data.xlsx"):
         print("文件已存在，正在读取")
         data_after = pd.read_excel('processed_data.xlsx').values
@@ -96,10 +110,11 @@ if __name__ == "__main__":
                          float_format='%.5f')  # 关键3，float_format 控制精度，将data_df写到 processed_data 表格的第一页中。若多个文件，可以在page_2中写入
         writer.save()  # 保存
 
+    # 数据集分割
     X_nested = from_2d_array_to_nested(data_after[:, 1::])
-    X_train, X_test, y_train, y_test = train_test_split(X_nested.iloc[:, [0]], pd.Series(data_after[:, 0].tolist()))
+    X_train, X_test, y_train, y_test = train_test_split(X_nested.iloc[:, [0]], pd.Series(data_after[:, 0].tolist()),
+                                                        test_size=0.33)
     print(X_train.shape, y_train.shape, X_test.shape, y_test.shape)
-    print(y_train)
     labels, counts = np.unique(y_train, return_counts=True)
     print(labels, counts)
 
@@ -111,26 +126,78 @@ if __name__ == "__main__":
     ax.set(title="Example time series", xlabel="Time")
     plt.show()
 
-    # 利用传统机器学习进行分类
+    # 判断决策树是否存在
+    try:
+        # 读取决策树
+        print("决策树存在，正在读取")
+        tsf2 = grabTree("classification_tree.pkl")
+    except Exception:
+        print("决策树不存在，正在训练")
+        # 训练决策树进行分类
+        from sktime.transformations.panel.summarize import RandomIntervalFeatureExtractor
 
-    from sktime.classification.interval_based import RandomIntervalSpectralForest
-    risf = RandomIntervalSpectralForest(n_estimators=10)
-    risf.fit(X_train, y_train)
-    print(risf.score(X_test, y_test))
+        features = [np.mean, np.std, _slope]
+        steps = [
+            ("transform", RandomIntervalFeatureExtractor(features=features)),
+            ("clf", DecisionTreeClassifier()),
+        ]
+        tsf2 = Pipeline(steps)
+        tsf2.fit(X_train, y_train)
+        print(tsf2.score(X_test, y_test))
 
-    from sktime.transformations.panel.summarize import RandomIntervalFeatureExtractor
+        # 保存决策树
+        storeTree(tsf2, "classification_tree.pkl")
 
-    features = [np.mean, np.std, _slope]
-    steps = [
-        ("transform", RandomIntervalFeatureExtractor(features=features)),
-        ("clf", DecisionTreeClassifier()),
-    ]
-    tsf2 = Pipeline(steps)
-    # tsf2 = ComposableTimeSeriesForestClassifier(estimator=tsf2)
-    tsf2.fit(X_train, y_train)
-    print(tsf2.score(X_test, y_test))
+    scores = cross_val_score(tsf2, X_train, y_train, cv=5)
+    print(scores)
+    print("Accuracy: %0.2f (+/- %0.2f)" % (scores.mean(), scores.std() * 2))
+
+    '''
+    === 打印分类报告 ===
+    TP(True Positive): 预测为正样本， 实际为正样本（预测正确）
+    FP(False Positive): 预测为正样本， 实际为负样本 （预测错误）
+    FN(False Negative): 预测为负样本，实际为正样本 （预测错误）
+    TN(True Negative): 预测为负样本， 实际为负样本 （预测正确）
+    
+    精确度(precision) = 正确预测的个数(TP)/预测为正样本的个数(TP+FP)
+    召回率(recall) = 正确预测值的个数(TP)/实际为正样本的个数(TP+FN)
+    F1值 = 2*精度*召回率/(精度+召回率)
+    support 为每个标签的出现次数(权重)
+    
+    micro avg：计算所有数据中预测正确的值
+    macro avg：每个类别指标中的未加权平均值(一列)
+    weighted avg：每个类别指标中的加权平均
+    '''
+    from sklearn.metrics import classification_report
+    target_names = ['PC', 'PVC', 'PMMA', '玻璃', '铜', '不锈钢', '铝合金', '铁', '松木', '桐木']
+    print(classification_report(y_test, tsf2.predict(X_test), target_names=target_names))
+
+    # === 绘制混淆矩阵：真实值与预测值的对比 ===
     y_pred = tsf2.predict(X_test)
-    print("打印混淆矩阵")
-    print(confusion_matrix(y_test, y_pred))
-    plot_confusion_matrix(tsf2, X_test, y_test)
+    con_mat = confusion_matrix(y_test, y_pred)
+
+    con_mat_norm = con_mat.astype('float') / con_mat.sum(axis=1)[:, np.newaxis]  # 归一化
+    con_mat_norm = np.around(con_mat_norm, decimals=2)
+
+    # === plot ===
+    plt.figure(figsize=(8, 8))
+    sns.heatmap(con_mat_norm, annot=True, cmap='Blues')
+
+    plt.ylim(0, 10)
+    plt.xlabel('Predicted labels')
+    plt.ylabel('True labels')
     plt.show()
+
+    # 绘制决策树
+    from sklearn import tree
+    import graphviz
+    dot_data = tree.export_graphviz(tsf2.steps[1][1],
+                                    out_file=None,
+                                    class_names=['PC', 'PVC', 'PMMA', 'Glass', 'Cuprum', 'SS', 'AL', 'Steel', 'Pine', 'Candlenut'],
+                                    filled=True,
+                                    rounded=True
+                                    )
+    graph = graphviz.Source(dot_data)
+    graph.render("iris")
+
+    print(tsf2.steps[1][1].feature_importances_)
