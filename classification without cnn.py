@@ -138,15 +138,32 @@ if __name__ == "__main__":
 
         features = [np.mean, np.std, _slope]
         steps = [
-            ("transform", RandomIntervalFeatureExtractor(features=features)),
-            ("clf", DecisionTreeClassifier()),
+            ("transform", RandomIntervalFeatureExtractor(5, features=features)),
+            ("clf", DecisionTreeClassifier(max_depth=5)),
         ]
         tsf2 = Pipeline(steps)
         tsf2.fit(X_train, y_train)
         print(tsf2.score(X_test, y_test))
 
+        test = []
+        for i in range(10):
+            clf = Pipeline(steps=[
+                ("transform", RandomIntervalFeatureExtractor(5, features=features)),
+                ("clf", DecisionTreeClassifier(max_depth=i + 1)),
+            ])
+
+            clf.fit(X_train, y_train)
+            score = clf.score(X_test, y_test)
+            test.append(score)
+
+        import matplotlib.pyplot as plt
+
+        plt.figure(figsize=(20, 8), dpi=80)
+        plt.plot(range(1, 11), test)
+        plt.show()
+
         # 保存决策树
-        storeTree(tsf2, "classification_tree.pkl")
+        # storeTree(tsf2, "classification_tree.pkl")
 
     scores = cross_val_score(tsf2, X_train, y_train, cv=5)
     print(scores)
