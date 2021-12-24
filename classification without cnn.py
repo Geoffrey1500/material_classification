@@ -59,14 +59,14 @@ def data_prepare(path_to_data, appro_period=100, filter_len=2, sampling_rate=10)
         plt.plot(peaks, data_filtered[peaks], "x")
         plt.show()
 
-        index_left = peaks[1:-1] - int(period/2)
-        index_right = peaks[1:-1] + int(period/2)
+        index_left = peaks[1:-1] - int(period*2/5)
+        index_right = peaks[1:-1] + int(period*3/5)
 
-        head_ = data_filtered[int(index_left[0]):int(index_right[0])].reshape((1, -1))
+        head_ = data_filtered[int(index_left[1]):int(index_right[1])].reshape((1, -1))
 
-        for j in range(len(index_left) - 1):
+        for j in range(len(index_left) - 2):
             # data_slice = np.hstack((label_, one_.reshape(-1, 1)[int(index_left[j+1]):int(index_right[j+1])]))
-            head_ = np.vstack((head_, data_filtered[int(index_left[j+1]):int(index_right[j+1])].reshape((1, -1))))
+            head_ = np.vstack((head_, data_filtered[int(index_left[j+2]):int(index_right[j+2])].reshape((1, -1))))
 
         data_combined_1 = np.hstack((np.ones((len(head_), 1))*label_[i], head_))
         # print(data_combined)
@@ -113,10 +113,12 @@ if __name__ == "__main__":
     # 数据集分割
     X_nested = from_2d_array_to_nested(data_after[:, 1::])
     X_train, X_test, y_train, y_test = train_test_split(X_nested.iloc[:, [0]], pd.Series(data_after[:, 0].tolist()),
-                                                        test_size=0.33)
+                                                        test_size=0.3)
     print(X_train.shape, y_train.shape, X_test.shape, y_test.shape)
     labels, counts = np.unique(y_train, return_counts=True)
     print(labels, counts)
+
+    print("查看X_test", X_test)
 
     # 可视化不同材料的反应曲线
     fig, ax = plt.subplots(1, figsize=plt.figaspect(0.25))
@@ -138,8 +140,8 @@ if __name__ == "__main__":
 
         features = [np.mean, np.std, _slope]
         steps = [
-            ("transform", RandomIntervalFeatureExtractor(5, features=features)),
-            ("clf", DecisionTreeClassifier(max_depth=5)),
+            ("transform", RandomIntervalFeatureExtractor("sqrt", features=features)),
+            ("clf", DecisionTreeClassifier(max_depth=6)),
         ]
         tsf2 = Pipeline(steps)
         tsf2.fit(X_train, y_train)
@@ -148,7 +150,7 @@ if __name__ == "__main__":
         test = []
         for i in range(10):
             clf = Pipeline(steps=[
-                ("transform", RandomIntervalFeatureExtractor(5, features=features)),
+                ("transform", RandomIntervalFeatureExtractor("sqrt", features=features)),
                 ("clf", DecisionTreeClassifier(max_depth=i + 1)),
             ])
 
@@ -163,7 +165,7 @@ if __name__ == "__main__":
         plt.show()
 
         # 保存决策树
-        # storeTree(tsf2, "classification_tree.pkl")
+        storeTree(tsf2, "classification_tree.pkl")
 
     scores = cross_val_score(tsf2, X_train, y_train, cv=5)
     print(scores)
