@@ -15,6 +15,16 @@ def grabTree(filename):
 
 
 def data_prepare(path_to_data, original_sampling_rate, appro_period=50, filter_len=2, down_sampling_scale=2):
+
+    """
+    :param path_to_data: 数据保存路径，注意windows操作系统下的反斜杠
+    :param original_sampling_rate: 数据原始采样频率，单位：赫兹 （HZ）
+    :param appro_period: 数据预估周期，单位：秒（S)
+    :param filter_len: 高斯平滑数据考虑范围（向前或向后的长度），单位：秒（S)
+    :param down_sampling_scale: 数据将采样比例
+    :return: 返回与训练集所用数据相同格式数据
+    """
+
     print(pd.read_excel(path_to_data).head(6))
     data_ = pd.read_excel(path_to_data).astype(float).to_numpy()
     print("一共有 " + str(np.shape(data_)[-1]) + "样本")
