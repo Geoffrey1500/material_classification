@@ -33,13 +33,13 @@ def data_prepare(path_to_data, original_sampling_rate, appro_period, filter_len=
     data_ = data_[::int(down_sampling_scale), :]
 
     # 计算将采用后数据频率
-    downscaled_rate = original_sampling_rate/down_sampling_scale
+    downscaled_rate = int(original_sampling_rate/down_sampling_scale)
 
     # 计算高斯平滑数据点
-    smooth_interval = filter_len * downscaled_rate
+    smooth_interval = int(filter_len * downscaled_rate)
 
     # 计算数据周期
-    period = appro_period*downscaled_rate
+    period = int(appro_period*downscaled_rate)
 
     for i in range(np.shape(data_)[-1]):
         print("第i个", i)

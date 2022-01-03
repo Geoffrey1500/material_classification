@@ -105,7 +105,7 @@ if __name__ == "__main__":
 
     else:
         print("文件不存在，正在预处理")
-        data_after = data_prepare("data_cut.xlsx", original_sampling_rate=10, appro_period=100)
+        data_after = data_prepare("data_cut.xlsx", original_sampling_rate=10, appro_period=100, down_sampling_scale=2)
         print(data_after)
 
         data_df = pd.DataFrame(data_after)  # 关键1，将ndarray格式转换为DataFrame
