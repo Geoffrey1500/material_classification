@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
 from sktime.datatypes._panel._convert import from_2d_array_to_nested
 from scipy import stats
+from scipy.ndimage import gaussian_filter1d
 
 
 def grabTree(filename):
@@ -13,38 +14,30 @@ def grabTree(filename):
     return pickle.load(fr)
 
 
-def gaussian(dist, mu=0, sigma=1.0):
-    return (1/(sigma*np.sqrt(2*np.pi))) * np.e ** (-0.5*((dist-mu)/sigma)**2)
-
-
-def data_prepare(path_to_data, appro_period=100, filter_len=2, sampling_rate=10):
+def data_prepare(path_to_data, original_sampling_rate, appro_period=50, filter_len=2, down_sampling_scale=2):
     print(pd.read_excel(path_to_data).head(6))
-    data_ = pd.read_excel(path_to_data).astype(float).to_numpy()*-10**6
+    data_ = pd.read_excel(path_to_data).astype(float).to_numpy()
     print("一共有 " + str(np.shape(data_)[-1]) + "样本")
 
     # 数据降采样
-    data_ = data_[::int(10 / sampling_rate), :]
+    data_ = data_[::int(down_sampling_scale), :]
 
-    # 构建高斯平滑滤波
-    smooth_interval = filter_len * sampling_rate
-    filter_con = gaussian(np.arange(-smooth_interval, smooth_interval + 1, 1), sigma=smooth_interval / 4)  # 卷积核
+    # 计算将采用后数据频率
+    downscaled_rate = original_sampling_rate/down_sampling_scale
 
-    # 高斯滤波可视化
-    fig = plt.figure()
-    plt.plot(np.arange(-smooth_interval, smooth_interval + 1, 1), filter_con)
-    plt.show()
+    # 计算高斯平滑数据点
+    smooth_interval = filter_len * downscaled_rate
 
-    period = appro_period*sampling_rate
-
-    data_head_all = np.zeros((1, period))
+    # 计算数据周期
+    period = appro_period*downscaled_rate
 
     for i in range(np.shape(data_)[-1]):
         print("第i个", i)
         # 平滑过滤降采样后数据
         one_ = data_[:, i]# 降采样后数据
-        data_filtered = np.convolve(one_, filter_con, 'valid')  # 平滑后
+        data_filtered = gaussian_filter1d(one_, sigma=smooth_interval / 8)  # 平滑后
 
-        peaks, _ = find_peaks(data_filtered, distance=appro_period*sampling_rate*0.5, height=np.max(data_filtered)*0.95)
+        peaks, _ = find_peaks(data_filtered, distance=appro_period*downscaled_rate*0.8, height=np.max(data_filtered)*0.95)
         print("一共有 " + str(len(peaks)) + " 波峰")
 
         # 波峰位置可视化
@@ -54,26 +47,18 @@ def data_prepare(path_to_data, appro_period=100, filter_len=2, sampling_rate=10)
         plt.plot(peaks, data_filtered[peaks], "x")
         plt.show()
 
-        index_left = peaks[1:-1] - int(period*2/5)
-        index_right = peaks[1:-1] + int(period*3/5)
+        index_left = peaks[0] - int(period*2/5)
+        index_right = peaks[0] + int(period*3/5)
 
-        head_ = data_filtered[int(index_left[0]):int(index_right[0])].reshape((1, -1))
+        # 这里用的是一个临时处理的方法，我的建议是将波峰前 2/5 的数据补全，这样子训练和预测的数据集能够统一
+        print(max(int(index_left), 0), max(int(index_right), period))
+        head_ = data_filtered[int(max(int(index_left), 0)):int(max(int(index_right), period))].reshape((1, -1))
 
-        for j in range(len(index_left) - 1):
-            # data_slice = np.hstack((label_, one_.reshape(-1, 1)[int(index_left[j+1]):int(index_right[j+1])]))
-            head_ = np.vstack((head_, data_filtered[int(index_left[j+1]):int(index_right[j+1])].reshape((1, -1))))
-
-        # print(data_combined)
-
-        print(data_head_all.shape, head_.shape)
-
-        data_head_all = np.vstack((data_head_all, head_))
-    print(data_head_all[1::, :])
-    return data_head_all[1::, :]
+    return head_
 
 
 if __name__ == "__main__":
-    collected_data = data_prepare('wood.csv', sampling_rate=5)
+    collected_data = data_prepare('Cu.csv', original_sampling_rate=10, down_sampling_scale=1)
     print(collected_data.shape)
     X_nested = from_2d_array_to_nested(collected_data)
 
@@ -84,4 +69,3 @@ if __name__ == "__main__":
     print(type(y_pred))
 
     print(target_names[int(stats.mode(y_pred)[0][0])-1])
-
