@@ -14,14 +14,14 @@ def grabTree(filename):
     return pickle.load(fr)
 
 
-def data_prepare(path_to_data, original_sampling_rate, appro_period=50, filter_len=2, down_sampling_scale=2):
+def data_prepare(path_to_data, original_sampling_rate, appro_period, filter_len=2, down_sampling_scale=1):
 
     """
     :param path_to_data: 数据保存路径，注意windows操作系统下的反斜杠
     :param original_sampling_rate: 数据原始采样频率，单位：赫兹 （HZ）
     :param appro_period: 数据预估周期，单位：秒（S)
-    :param filter_len: 高斯平滑数据考虑范围（向前或向后的长度），单位：秒（S)
-    :param down_sampling_scale: 数据将采样比例
+    :param filter_len: 高斯平滑数据考虑范围（向前或向后的长度），单位：秒（S)，默认为 2 秒
+    :param down_sampling_scale: 数据将采样比例，默认为 1
     :return: 返回与训练集所用数据相同格式数据
     """
 
@@ -68,7 +68,7 @@ def data_prepare(path_to_data, original_sampling_rate, appro_period=50, filter_l
 
 
 if __name__ == "__main__":
-    collected_data = data_prepare('Cu.csv', original_sampling_rate=10, down_sampling_scale=1)
+    collected_data = data_prepare('Cu.csv', original_sampling_rate=10, appro_period=50)
     print(collected_data.shape)
     X_nested = from_2d_array_to_nested(collected_data)
 

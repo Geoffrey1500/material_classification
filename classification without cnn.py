@@ -17,39 +17,45 @@ import os
 from sklearn.model_selection import KFold
 from sklearn.model_selection import cross_val_score
 import seaborn as sns
+from scipy.ndimage import gaussian_filter1d
 
 
-def gaussian(dist, mu=0, sigma=1.0):
-    return (1/(sigma*np.sqrt(2*np.pi))) * np.e ** (-0.5*((dist-mu)/sigma)**2)
+def data_prepare(path_to_data, original_sampling_rate, appro_period, filter_len=2, down_sampling_scale=1):
 
+    """
+    :param path_to_data: 数据保存路径，注意windows操作系统下的反斜杠
+    :param original_sampling_rate: 数据原始采样频率，单位：赫兹 （HZ）
+    :param appro_period: 数据预估周期，单位：秒（S)
+    :param filter_len: 高斯平滑数据考虑范围（向前或向后的长度），单位：秒（S)，默认为 2 秒
+    :param down_sampling_scale: 数据将采样比例，默认为 1
+    :return: 返回与训练集所用数据相同格式数据
+    """
 
-def data_prepare(path_to_data, appro_period=100, filter_len=2, sampling_rate=10):
     data_ = pd.read_excel(path_to_data).to_numpy()
     print("一共有 " + str(np.shape(data_)[-1]) + "样本")
 
     # 数据降采样
-    data_ = data_[::int(10 / sampling_rate), :]
+    data_ = data_[::int(down_sampling_scale), :]
 
-    # 构建高斯平滑滤波
-    smooth_interval = filter_len * sampling_rate
-    filter_con = gaussian(np.arange(-smooth_interval, smooth_interval + 1, 1), sigma=smooth_interval / 4)  # 卷积核
+    # 计算将采用后数据频率
+    downscaled_rate = int(original_sampling_rate / down_sampling_scale)
 
-    # 高斯滤波可视化
-    fig = plt.figure()
-    plt.plot(np.arange(-smooth_interval, smooth_interval + 1, 1), filter_con)
-    plt.show()
+    # 计算高斯平滑数据点
+    smooth_interval = int(filter_len * downscaled_rate)
+
+    # 计算数据周期
+    period = int(appro_period * downscaled_rate)
 
     label_ = np.arange(1, np.shape(data_)[-1] + 1, 1).reshape((-1, 1))
-    period = appro_period*sampling_rate
 
     data_head_all = np.zeros((1, period + 1))
 
     for i in range(np.shape(data_)[-1]):
         # 平滑过滤降采样后数据
         one_ = data_[:, i]  # 降采样后数据
-        data_filtered = np.convolve(one_, filter_con, 'valid')  # 平滑后
+        data_filtered = gaussian_filter1d(one_, sigma=smooth_interval / 8)  # 平滑后
 
-        peaks, _ = find_peaks(data_filtered, distance=appro_period*sampling_rate*0.6, height=np.max(data_filtered)*0.95)
+        peaks, _ = find_peaks(data_filtered, distance=appro_period*downscaled_rate*0.8, height=np.max(data_filtered)*0.95)
         print("一共有 " + str(len(peaks)) + " 波峰")
 
         # 波峰位置可视化
@@ -62,11 +68,11 @@ def data_prepare(path_to_data, appro_period=100, filter_len=2, sampling_rate=10)
         index_left = peaks[1:-1] - int(period*2/5)
         index_right = peaks[1:-1] + int(period*3/5)
 
-        head_ = data_filtered[int(index_left[1]):int(index_right[1])].reshape((1, -1))
+        head_ = data_filtered[int(index_left[0]):int(index_right[0])].reshape((1, -1))
 
-        for j in range(len(index_left) - 2):
+        for j in range(len(index_left) - 1):
             # data_slice = np.hstack((label_, one_.reshape(-1, 1)[int(index_left[j+1]):int(index_right[j+1])]))
-            head_ = np.vstack((head_, data_filtered[int(index_left[j+2]):int(index_right[j+2])].reshape((1, -1))))
+            head_ = np.vstack((head_, data_filtered[int(index_left[j+1]):int(index_right[j+1])].reshape((1, -1))))
 
         data_combined_1 = np.hstack((np.ones((len(head_), 1))*label_[i], head_))
         # print(data_combined)
@@ -99,7 +105,7 @@ if __name__ == "__main__":
 
     else:
         print("文件不存在，正在预处理")
-        data_after = data_prepare("data_cut.xlsx", sampling_rate=5)
+        data_after = data_prepare("data_cut.xlsx", original_sampling_rate=10, appro_period=100)
         print(data_after)
 
         data_df = pd.DataFrame(data_after)  # 关键1，将ndarray格式转换为DataFrame
@@ -148,10 +154,10 @@ if __name__ == "__main__":
         print(tsf2.score(X_test, y_test))
 
         test = []
-        for i in range(10):
+        for k in range(10):
             clf = Pipeline(steps=[
                 ("transform", RandomIntervalFeatureExtractor("sqrt", features=features)),
-                ("clf", DecisionTreeClassifier(max_depth=i + 1)),
+                ("clf", DecisionTreeClassifier(max_depth=k + 1)),
             ])
 
             clf.fit(X_train, y_train)
